@@ -6,6 +6,8 @@
 #include "ShaderProgram.h"
 #include <vector>
 #include <string>
+#define IMGUI_DEFINE_MATH_OPERATORS
+#include <imgui.h>
 
 struct SurfaceInfo{
     float value;
@@ -23,6 +25,7 @@ public:
     App();
     void Run();
 private:
+    void DrawImGuiTransfer();
     void DrawImGui();
     void DrawWorld();
     void Update(float deltaTime);
@@ -33,6 +36,7 @@ private:
     VoxelModel* m_tmod;
     ShaderProgram m_defaultShader;
     ShaderProgram m_planeShader;
+    ShaderProgram m_volumeShader;
     float m_p = 0.5f;
     std::vector<std::string> m_infoFiles;
     std::vector<std::string> m_rawFiles;
@@ -40,4 +44,6 @@ private:
     int m_selectedRaw=-1;
     std::vector<SurfaceInfo> m_surfaceInfoes;
     std::vector<CrossSectionInfo> m_crossSectionInfoes;
+    ImGuiWindowFlags m_windowFlag;
+    std::array<float,256> m_transfer;
 };

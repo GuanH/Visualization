@@ -63,7 +63,9 @@ VoxelModel::VoxelModel(const std::string& infFile, const std::string& rawFile){
     }
     auto dim = glm::vec3(m_res) * m_voxelSize;
     float mxaxis = std::max({dim.x,dim.y,dim.z});
+    float mnaxis = std::min({dim.x,dim.y,dim.z});
     m_voxelSize *= 20.0f / mxaxis;
+    m_ratio = dim / mxaxis;
     f.close();
     f.open("assets/"+rawFile, std::ios::binary | std::ios::in);
     if(!f.is_open()){
@@ -80,6 +82,7 @@ VoxelModel::VoxelModel(const std::string& infFile, const std::string& rawFile){
         m_histogram[x]+=1;
     }
     m_voxels.resize(m_res.x, m_res.y, m_res.z);
+    m_gradients.resize(m_res.x, m_res.y, m_res.z, glm::vec4{0,0,0,0});
     for(int i=0;i<m_res.x-1;i++)
         for(int j=0;j<m_res.y-1;j++)
             for(int k=0;k<m_res.z-1;k++){
@@ -91,12 +94,50 @@ VoxelModel::VoxelModel(const std::string& infFile, const std::string& rawFile){
                 int ind5 = (i + 1) * m_res.y * m_res.z + (j    ) * m_res.z + (k + 1);
                 int ind6 = (i + 1) * m_res.y * m_res.z + (j + 1) * m_res.z + (k    );
                 int ind7 = (i + 1) * m_res.y * m_res.z + (j + 1) * m_res.z + (k + 1);
+
+                int ind8 = (i - 1) * m_res.y * m_res.z + (j    ) * m_res.z + (k    );
+                int ind9 = (i    ) * m_res.y * m_res.z + (j - 1) * m_res.z + (k    );
+                int ind10= (i    ) * m_res.y * m_res.z + (j    ) * m_res.z + (k - 1);
                 int mn = std::min({m_data[ind0],m_data[ind1],m_data[ind2],m_data[ind3],m_data[ind4],m_data[ind5],m_data[ind6],m_data[ind7]});
                 int mx = std::max({m_data[ind0],m_data[ind1],m_data[ind2],m_data[ind3],m_data[ind4],m_data[ind5],m_data[ind6],m_data[ind7]});
                 m_voxelTable.Add(mn, mx, {i,j,k});
                 m_voxels.Get(i,j,k) = m_data[ind0] / 255.0f;
+                auto& grad = m_gradients.Get(i,j,k);
+                if(i != 0){
+                    grad.x = (m_data[ind4] - m_data[ind8]) * 0.5f;
+                }
+                if(j != 0){
+                    grad.y = (m_data[ind2] - m_data[ind9]) * 0.5f;
+                }
+                if(k != 0){
+                    grad.z = (m_data[ind1] - m_data[ind10]) * 0.5f;
+                }
+                grad.w = 0;
+                if(glm::dot(grad,grad)){
+                    grad = glm::normalize(grad);
+                    grad = grad*0.5f+0.5f;
+                    grad = glm::clamp(grad,glm::vec4{0},glm::vec4{1});
+                }
+                grad.w = m_data[ind0] / 255.0f;
             }
     m_isOpen = true;
+
+    GLuint texs[2];
+    glGenTextures(2,texs);
+    m_gradTex = texs[0];
+    m_transferTex = texs[1];
+    glBindTexture(GL_TEXTURE_3D, m_gradTex);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA32F, m_res.z, m_res.y, m_res.x, 0, GL_RGBA, GL_FLOAT, m_gradients.data());
+
+    glBindTexture(GL_TEXTURE_1D, m_transferTex);
+    glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 }
 
 VoxelModel::~VoxelModel(){
@@ -158,4 +199,24 @@ void VoxelModel::DrawCrossSection(){
     for(auto&it:m_crossSections){
         it.DrawCrossSection();
     }
+}
+
+void VoxelModel::DrawVolume(){
+    if(m_isOpen){
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_3D, m_gradTex);
+        glUniform1i(2,0);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_1D, m_transferTex);
+        glUniform1i(4,1);
+        glUniform3fv(1,1,glm::value_ptr(m_ratio));
+        glDisable(GL_DEPTH_TEST);
+        glDrawArrays(GL_TRIANGLES,0,6);
+    }
+}
+
+
+void VoxelModel::UpdateTransfer(const std::array<float,256>& transfer){
+    glBindTexture(GL_TEXTURE_1D, m_transferTex);
+    glTexImage1D(GL_TEXTURE_1D, 0, GL_R32F, 256, 0, GL_RED, GL_FLOAT, transfer.data());
 }

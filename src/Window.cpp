@@ -1,9 +1,11 @@
 #include "Window.h"
-#include <iostream>
+#include "GLFW/glfw3.h"
+#include "Utility.h"
 void KeyboardCallBack(GLFWwindow* window, int key, int scancode, int action, int mods);
 void WindowSizeCallBack(GLFWwindow* window, int width, int height);
+void ScrollCallBack(GLFWwindow* window, double xoffset, double yoffset);
 Window::Window(int width, int height, const char* name)
-	:m_width(width), m_height(height)
+	:m_width(width), m_height(height),m_scrollx(0),m_scrolly(0)
 {
 	m_keyPressed.fill(false);
 	ERR_CHECK_BOOL(glfwInit());
@@ -12,6 +14,7 @@ Window::Window(int width, int height, const char* name)
 	glfwSetWindowUserPointer(m_window, this);
 	glfwSetKeyCallback(m_window, KeyboardCallBack);
 	glfwSetWindowSizeCallback(m_window, WindowSizeCallBack);
+	glfwSetScrollCallback(m_window, ScrollCallBack);
 #ifdef PROFILE_FPS
 	glfwSwapInterval(0);
 #endif
@@ -21,10 +24,8 @@ Window::Window(int width, int height, const char* name)
 
 bool Window::ProcessEvent()
 {
-	
+	m_scrollx = m_scrolly = 0;
 	glfwPollEvents();
-
-
 	return glfwWindowShouldClose(m_window) == 0;
 }
 
@@ -64,4 +65,10 @@ void WindowSizeCallBack(GLFWwindow* window, int width, int height) {
 	windowClass->m_width = width;
 	windowClass->m_height = height;
     glViewport(0,0,width,height);
+}
+
+void ScrollCallBack(GLFWwindow* window, double xoffset, double yoffset){
+	Window* windowClass = (Window*)glfwGetWindowUserPointer(window);
+	windowClass->m_scrollx+=xoffset;
+	windowClass->m_scrolly+=yoffset;
 }
